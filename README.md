@@ -44,7 +44,7 @@ All inputs are **optional**. If not set, sensible defaults will be used.
 
 | Name | Description | Default |
 | --- | --- | --- |
-| `token` | `GITHUB_TOKEN` or a `repo` scoped [Personal Access Token (PAT)](https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token). | `GITHUB_TOKEN` |
+| `token` | `GITHUB_TOKEN` (`contents: write`, `pull-requests: write`) or a `repo` scoped [Personal Access Token (PAT)](https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token). | `GITHUB_TOKEN` |
 | `path` | Relative path under `GITHUB_WORKSPACE` to the repository. | `GITHUB_WORKSPACE` |
 | `commit-message` | The message to use when committing changes. | `[create-pull-request] automated change` |
 | `committer` | The committer name and email address in the format `Display Name <email@address.com>`. Defaults to the GitHub Actions bot user. | `GitHub <noreply@github.com>` |
@@ -63,6 +63,14 @@ All inputs are **optional**. If not set, sensible defaults will be used.
 | `team-reviewers` | A comma or newline-separated list of GitHub teams to request a review from. Note that a `repo` scoped [PAT](https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token) may be required. See [this issue](https://github.com/peter-evans/create-pull-request/issues/155). | |
 | `milestone` | The number of the milestone to associate this pull request with. | |
 | `draft` | Create a [draft pull request](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/about-pull-requests#draft-pull-requests). | `false` |
+
+For self-hosted runners behind a corporate proxy set the `https_proxy` environment variable.
+```yml
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v3
+        env:
+          https_proxy: http://<proxy_address>:<port>
+```
 
 ### Action outputs
 
@@ -156,6 +164,11 @@ To create a project card for the pull request, pass the `pull-request-number` st
           column-name: My column
           issue-number: ${{ steps.cpr.outputs.pull-request-number }}
 ```
+
+### Auto-merge
+
+Auto-merge can be enabled on a pull request allowing it to be automatically merged once requirements have been satisfied.
+See [enable-pull-request-automerge](https://github.com/peter-evans/enable-pull-request-automerge) action for usage details.
 
 ## Reference Example
 
