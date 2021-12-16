@@ -91,7 +91,8 @@ export async function createOrUpdateBranch(
   base: string,
   branch: string,
   branchRemoteName: string,
-  signoff: boolean
+  signoff: boolean,
+  addPaths: string[]
 ): Promise<CreateOrUpdateBranchResult> {
   // Get the working base.
   // When a ref, it may or may not be the actual base.
@@ -110,7 +111,8 @@ export async function createOrUpdateBranch(
   const result: CreateOrUpdateBranchResult = {
     action: 'none',
     base: base,
-    hasDiffWithBase: false
+    hasDiffWithBase: false,
+    headSha: ''
   }
 
   // Save the working base changes to a temporary branch
@@ -119,12 +121,17 @@ export async function createOrUpdateBranch(
   // Commit any uncommitted changes
   if (await git.isDirty(true)) {
     core.info('Uncommitted changes found. Adding a commit.')
-    await git.exec(['add', '-A'])
+    for (const path of addPaths) {
+      await git.exec(['add', path], true)
+    }
     const params = ['-m', commitMessage]
     if (signoff) {
       params.push('--signoff')
     }
     await git.commit(params)
+    // Remove uncommitted tracked and untracked changes
+    await git.exec(['reset', '--hard'])
+    await git.exec(['clean', '-f'])
   }
 
   // Perform fetch and reset the working base
@@ -231,6 +238,9 @@ export async function createOrUpdateBranch(
     result.hasDiffWithBase = await isAhead(git, base, branch)
   }
 
+  // Get the pull request branch SHA
+  result.headSha = await git.revParse('HEAD')
+
   // Delete the temporary branch
   await git.exec(['branch', '--delete', '--force', tempBranch])
 
@@ -241,4 +251,5 @@ interface CreateOrUpdateBranchResult {
   action: string
   base: string
   hasDiffWithBase: boolean
+  headSha: string
 }
