@@ -60,6 +60,9 @@ export async function createPullRequest(inputs: Inputs): Promise<void> {
       : baseRemote.repository
     if (inputs.pushToFork) {
       // Check if the supplied fork is really a fork of the base
+      core.info(
+        `Checking if '${branchRepository}' is a fork of '${baseRemote.repository}'`
+      )
       const parentRepository = await githubHelper.getRepositoryParent(
         branchRepository
       )
@@ -240,8 +243,8 @@ export async function createPullRequest(inputs: Inputs): Promise<void> {
         }
       }
     }
-  } catch (error: any) {
-    core.setFailed(error.message)
+  } catch (error) {
+    core.setFailed(utils.getErrorMessage(error))
   } finally {
     // Remove auth and restore persisted auth config if it existed
     core.startGroup('Restore persisted git credentials')
