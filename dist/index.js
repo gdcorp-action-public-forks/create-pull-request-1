@@ -74,18 +74,30 @@ function tryFetch(git, remote, branch) {
     });
 }
 exports.tryFetch = tryFetch;
+// Return the number of commits that branch2 is ahead of branch1
+function commitsAhead(git, branch1, branch2) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const result = yield git.revList([`${branch1}...${branch2}`], ['--right-only', '--count']);
+        return Number(result);
+    });
+}
 // Return true if branch2 is ahead of branch1
 function isAhead(git, branch1, branch2) {
     return __awaiter(this, void 0, void 0, function* () {
-        const result = yield git.revList([`${branch1}...${branch2}`], ['--right-only', '--count']);
-        return Number(result) > 0;
+        return (yield commitsAhead(git, branch1, branch2)) > 0;
+    });
+}
+// Return the number of commits that branch2 is behind branch1
+function commitsBehind(git, branch1, branch2) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const result = yield git.revList([`${branch1}...${branch2}`], ['--left-only', '--count']);
+        return Number(result);
     });
 }
 // Return true if branch2 is behind branch1
 function isBehind(git, branch1, branch2) {
     return __awaiter(this, void 0, void 0, function* () {
-        const result = yield git.revList([`${branch1}...${branch2}`], ['--left-only', '--count']);
-        return Number(result) > 0;
+        return (yield commitsBehind(git, branch1, branch2)) > 0;
     });
 }
 // Return true if branch2 is even with branch1
@@ -214,9 +226,16 @@ function createOrUpdateBranch(git, commitMessage, base, branch, branchRemoteName
             //   branches after merging. In particular, it catches a case where the branch was
             //   squash merged but not deleted. We need to reset to make sure it doesn't appear
             //   to have a diff with the base due to different commits for the same changes.
+            // - If the number of commits ahead of the base branch differs between the branch and
+            //   temp branch. This catches a case where the base branch has been force pushed to
+            //   a new commit.
             // For changes on base this reset is equivalent to a rebase of the pull request branch.
+            const tempBranchCommitsAhead = yield commitsAhead(git, base, tempBranch);
+            const branchCommitsAhead = yield commitsAhead(git, base, branch);
             if ((yield git.hasDiff([`${branch}..${tempBranch}`])) ||
-                !(yield isAhead(git, base, tempBranch))) {
+                branchCommitsAhead != tempBranchCommitsAhead ||
+                !(tempBranchCommitsAhead > 0) // !isAhead
+            ) {
                 core.info(`Resetting '${branch}'`);
                 // Alternatively, git switch -C branch tempBranch
                 yield git.checkout(branch, tempBranch);
@@ -292,6 +311,9 @@ function createPullRequest(inputs) {
     return __awaiter(this, void 0, void 0, function* () {
         let gitAuthHelper;
         try {
+            if (!inputs.token) {
+                throw new Error(`Input 'token' not supplied. Unable to continue.`);
+            }
             // Get the repository path
             const repoPath = utils.getRepoPath(inputs.path);
             // Create a git command manager
@@ -320,7 +342,7 @@ function createPullRequest(inputs) {
                     throw new Error(`Repository '${branchRepository}' is not a fork of '${baseRemote.repository}'. Unable to continue.`);
                 }
                 // Add a remote for the fork
-                const remoteUrl = utils.getRemoteUrl(baseRemote.protocol, branchRepository);
+                const remoteUrl = utils.getRemoteUrl(baseRemote.protocol, baseRemote.hostname, branchRepository);
                 yield git.exec(['remote', 'add', 'fork', remoteUrl]);
             }
             core.endGroup();
@@ -1228,11 +1250,13 @@ function getRemoteDetail(remoteUrl) {
     if (!githubServerMatch) {
         throw new Error('Could not parse GitHub Server name');
     }
-    const httpsUrlPattern = new RegExp('^https?://.*@?' + githubServerMatch[1] + '/(.+/.+?)(\\.git)?$', 'i');
-    const sshUrlPattern = new RegExp('^git@' + githubServerMatch[1] + ':(.+/.+)\\.git$', 'i');
+    const hostname = githubServerMatch[1];
+    const httpsUrlPattern = new RegExp('^https?://.*@?' + hostname + '/(.+/.+?)(\\.git)?$', 'i');
+    const sshUrlPattern = new RegExp('^git@' + hostname + ':(.+/.+)\\.git$', 'i');
     const httpsMatch = remoteUrl.match(httpsUrlPattern);
     if (httpsMatch) {
         return {
+            hostname,
             protocol: 'HTTPS',
             repository: httpsMatch[1]
         };
@@ -1240,6 +1264,7 @@ function getRemoteDetail(remoteUrl) {
     const sshMatch = remoteUrl.match(sshUrlPattern);
     if (sshMatch) {
         return {
+            hostname,
             protocol: 'SSH',
             repository: sshMatch[1]
         };
@@ -1247,10 +1272,10 @@ function getRemoteDetail(remoteUrl) {
     throw new Error(`The format of '${remoteUrl}' is not a valid GitHub repository URL`);
 }
 exports.getRemoteDetail = getRemoteDetail;
-function getRemoteUrl(protocol, repository) {
+function getRemoteUrl(protocol, hostname, repository) {
     return protocol == 'HTTPS'
-        ? `https://github.com/${repository}`
-        : `git@github.com:${repository}.git`;
+        ? `https://${hostname}/${repository}`
+        : `git@${hostname}:${repository}.git`;
 }
 exports.getRemoteUrl = getRemoteUrl;
 function secondsSinceEpoch() {
