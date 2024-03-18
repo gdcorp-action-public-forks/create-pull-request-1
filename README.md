@@ -21,20 +21,21 @@ Create Pull Request action will:
 
 - [Concepts, guidelines and advanced usage](docs/concepts-guidelines.md)
 - [Examples](docs/examples.md)
-- [Updating to v5](docs/updating.md)
+- [Updating to v6](docs/updating.md)
+- [Common issues](docs/common-issues.md)
 
 ## Usage
 
 ```yml
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       # Make changes to pull request here
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v5
+        uses: peter-evans/create-pull-request@v6
 ```
 
-You can also pin to a [specific release](https://github.com/peter-evans/create-pull-request/releases) version in the format `@v5.x.x`
+You can also pin to a [specific release](https://github.com/peter-evans/create-pull-request/releases) version in the format `@v6.x.x`
 
 ### Workflow permissions
 
@@ -52,14 +53,15 @@ All inputs are **optional**. If not set, sensible defaults will be used.
 | Name | Description | Default |
 | --- | --- | --- |
 | `token` | `GITHUB_TOKEN` (permissions `contents: write` and `pull-requests: write`) or a `repo` scoped [Personal Access Token (PAT)](https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token). | `GITHUB_TOKEN` |
+| `git-token` | The [Personal Access Token (PAT)](https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token) that the action will use for git operations. | Defaults to the value of `token` |
 | `path` | Relative path under `GITHUB_WORKSPACE` to the repository. | `GITHUB_WORKSPACE` |
 | `add-paths` | A comma or newline-separated list of file paths to commit. Paths should follow git's [pathspec](https://git-scm.com/docs/gitglossary#Documentation/gitglossary.txt-aiddefpathspecapathspec) syntax. If no paths are specified, all new and modified files are added. See [Add specific paths](#add-specific-paths). | |
-| `commit-message` | The message to use when committing changes. | `[create-pull-request] automated change` |
-| `committer` | The committer name and email address in the format `Display Name <email@address.com>`. Defaults to the GitHub Actions bot user. | `GitHub <noreply@github.com>` |
-| `author` | The author name and email address in the format `Display Name <email@address.com>`. Defaults to the user who triggered the workflow run. | `${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>` |
+| `commit-message` | The message to use when committing changes. See [commit-message](#commit-message). | `[create-pull-request] automated change` |
+| `committer` | The committer name and email address in the format `Display Name <email@address.com>`. Defaults to the GitHub Actions bot user. | `github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>` |
+| `author` | The author name and email address in the format `Display Name <email@address.com>`. Defaults to the user who triggered the workflow run. | `${{ github.actor }} <${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com>` |
 | `signoff` | Add [`Signed-off-by`](https://git-scm.com/docs/git-commit#Documentation/git-commit.txt---signoff) line by the committer at the end of the commit log message. | `false` |
 | `branch` | The pull request branch name. | `create-pull-request/patch` |
-| `delete-branch` | Delete the `branch` when closing pull requests, and when undeleted after merging. | `false` |
+| `delete-branch` | Delete the `branch` if it doesn't have an active pull request associated with it. See [delete-branch](#delete-branch). | `false` |
 | `branch-suffix` | The branch suffix type when using the alternative branching strategy. Valid values are `random`, `timestamp` and `short-commit-hash`. See [Alternative strategy](#alternative-strategy---always-create-a-new-pull-request-branch) for details. | |
 | `base` | Sets the pull request base branch. | Defaults to the branch checked out in the workflow. |
 | `push-to-fork` | A fork of the checked-out parent repository to which the pull request branch will be pushed. e.g. `owner/repo-fork`. The pull request will be created to merge the fork's branch into the parent's base. See [push pull request branches to a fork](docs/concepts-guidelines.md#push-pull-request-branches-to-a-fork) for details. | |
@@ -73,10 +75,36 @@ All inputs are **optional**. If not set, sensible defaults will be used.
 | `milestone` | The number of the milestone to associate this pull request with. | |
 | `draft` | Create a [draft pull request](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/about-pull-requests#draft-pull-requests). It is not possible to change draft status after creation except through the web interface. | `false` |
 
+#### commit-message
+
+In addition to a message, the `commit-message` input can also be used to populate the commit description. Leave a single blank line between the message and description.
+
+```yml
+          commit-message: |
+            the first line is the commit message
+
+            the commit description starts
+            after a blank line and can be
+            multiple lines
+```
+
+#### delete-branch
+
+The `delete-branch` feature doesn't delete branches immediately on merge. (It can't do that because it would require the merge to somehow trigger the action.)
+The intention of the feature is that when the action next runs it will delete the `branch` if there is no diff.
+
+Enabling this feature leads to the following behaviour:
+1. If a pull request was merged and the branch is left undeleted, when the action next runs it will delete the branch if there is no further diff.
+2. If a pull request is open, but there is now no longer a diff and the PR is unnecessary, the action will delete the branch causing the PR to close.
+
+If you want branches to be deleted immediately on merge then you should use GitHub's `Automatically delete head branches` feature in your repository settings.
+
+#### Proxy support
+
 For self-hosted runners behind a corporate proxy set the `https_proxy` environment variable.
 ```yml
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v5
+        uses: peter-evans/create-pull-request@v6
         env:
           https_proxy: http://<proxy_address>:<port>
 ```
@@ -96,7 +124,7 @@ Note that in order to read the step outputs the action step must have an id.
 ```yml
       - name: Create Pull Request
         id: cpr
-        uses: peter-evans/create-pull-request@v5
+        uses: peter-evans/create-pull-request@v6
       - name: Check outputs
         if: ${{ steps.cpr.outputs.pull-request-number }}
         run: |
@@ -115,7 +143,7 @@ How the action behaves:
 - If there are changes (i.e. a diff exists with the checked-out base branch), the changes will be pushed to a new `branch` and a pull request created.
 - If there are no changes (i.e. no diff exists with the checked-out base branch), no pull request will be created and the action exits silently.
 - If a pull request already exists it will be updated if necessary. Local changes in the Actions workspace, or changes on the base branch, can cause an update. If no update is required the action exits silently.
-- If a pull request exists and new changes on the base branch make the pull request unnecessary (i.e. there is no longer a diff between the pull request branch and the base), the pull request is automatically closed. Additionally, if `delete-branch` is set to `true` the `branch` will be deleted.
+- If a pull request exists and new changes on the base branch make the pull request unnecessary (i.e. there is no longer a diff between the pull request branch and the base), the pull request is automatically closed. Additionally, if [`delete-branch`](#delete-branch) is set to `true` the `branch` will be deleted.
 
 For further details about how the action works and usage guidelines, see [Concepts, guidelines and advanced usage](docs/concepts-guidelines.md).
 
@@ -159,7 +187,7 @@ File changes that do not match one of the paths will be stashed and restored aft
 
 ```yml
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v5
+        uses: peter-evans/create-pull-request@v6
         with:
           add-paths: |
             *.java
@@ -173,7 +201,7 @@ Note that the repository must be checked out on a branch with a remote, it won't
 
 ```yml
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Create commits
         run: |
           git config user.name 'Peter Evans'
@@ -186,7 +214,7 @@ Note that the repository must be checked out on a branch with a remote, it won't
       - name: Uncommitted change
         run: date +%s > report.txt
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v5
+        uses: peter-evans/create-pull-request@v6
 ```
 
 ### Create a project card
@@ -196,7 +224,7 @@ To create a project card for the pull request, pass the `pull-request-number` st
 ```yml
       - name: Create Pull Request
         id: cpr
-        uses: peter-evans/create-pull-request@v5
+        uses: peter-evans/create-pull-request@v6
 
       - name: Create or Update Project Card
         if: ${{ steps.cpr.outputs.pull-request-number }}
@@ -224,19 +252,19 @@ jobs:
   createPullRequest:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Make changes to pull request
         run: date +%s > report.txt
 
       - name: Create Pull Request
         id: cpr
-        uses: peter-evans/create-pull-request@v5
+        uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.PAT }}
           commit-message: Update report
-          committer: GitHub <noreply@github.com>
-          author: ${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>
+          committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          author: ${{ github.actor }} <${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com>
           signoff: false
           branch: example-patches
           delete-branch: true

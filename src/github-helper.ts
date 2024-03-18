@@ -20,12 +20,16 @@ interface Pull {
 export class GitHubHelper {
   private octokit: InstanceType<typeof Octokit>
 
-  constructor(token: string) {
+  constructor(githubServerHostname: string, token: string) {
     const options: OctokitOptions = {}
     if (token) {
       options.auth = `${token}`
     }
-    options.baseUrl = process.env['GITHUB_API_URL'] || 'https://api.github.com'
+    if (githubServerHostname !== 'github.com') {
+      options.baseUrl = `https://${githubServerHostname}/api/v3`
+    } else {
+      options.baseUrl = 'https://api.github.com'
+    }
     this.octokit = new Octokit(options)
   }
 
@@ -44,7 +48,6 @@ export class GitHubHelper {
   ): Promise<Pull> {
     const [headOwner] = headRepository.split('/')
     const headBranch = `${headOwner}:${inputs.branch}`
-    const headBranchFull = `${headRepository}:${inputs.branch}`
 
     // Try to create the pull request
     try {
@@ -81,7 +84,7 @@ export class GitHubHelper {
     const {data: pulls} = await this.octokit.rest.pulls.list({
       ...this.parseRepository(baseRepository),
       state: 'open',
-      head: headBranchFull,
+      head: headBranch,
       base: inputs.base
     })
     core.info(`Attempting update of pull request`)
@@ -101,14 +104,12 @@ export class GitHubHelper {
     }
   }
 
-  async getRepositoryParent(headRepository: string): Promise<string> {
+  async getRepositoryParent(headRepository: string): Promise<string | null> {
     const {data: headRepo} = await this.octokit.rest.repos.get({
       ...this.parseRepository(headRepository)
     })
     if (!headRepo.parent) {
-      throw new Error(
-        `Repository '${headRepository}' is not a fork. Unable to continue.`
-      )
+      return null
     }
     return headRepo.parent.full_name
   }
